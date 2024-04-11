@@ -5,7 +5,7 @@ use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, StrokeAlignment},
-    text::{renderer::TextRenderer, Text},
+    text::{renderer::TextRenderer, Text, TextStyleBuilder},
 };
 use profont::{PROFONT_14_POINT, PROFONT_24_POINT};
 use ssd1680::driver::DisplayError;
@@ -39,19 +39,22 @@ where
     let bmp = Bmp::<BinaryColor>::from_slice(&icon.data).map_err(|e| WeatherPageError::BMP(e))?;
     let large_text = MonoTextStyle::new(&PROFONT_24_POINT, BinaryColor::Off);
     let small_text = MonoTextStyle::new(&PROFONT_14_POINT, BinaryColor::Off);
+    let right_align = TextStyleBuilder::new()
+        .baseline(embedded_graphics::text::Baseline::Top)
+        .alignment(embedded_graphics::text::Alignment::Right)
+        .build();
+
     let temp_str = format!("{:.0}F", weather.list[0].main.temp);
-    let weather_str = format!(
-        "Forecast For {}\nH{:.0}F L{:.0}F Now{:.0}F\n{}",
-        weather.city.name,
-        weather.list[0].main.temp_max,
-        weather.list[0].main.temp_min,
-        weather.list[0].main.temp,
-        weather.list[0].weather[0].main
+    let high_low_temp = format!(
+        "H{:.0} L{:.0}",
+        weather.list[0].main.temp_max, weather.list[0].main.temp_min,
     );
+
     // background fill
     display
         .fill_solid(&display.bounding_box(), BinaryColor::On)
         .map_err(|e| WeatherPageError::Display(e))?;
+
     Text::with_baseline(
         &weather.city.name,
         Point::new(0, 0),
@@ -60,11 +63,33 @@ where
     )
     .draw(display)
     .map_err(|e| WeatherPageError::Display(e))?;
+
     Text::with_baseline(
         &temp_str,
         Point::new(0, small_text.line_height() as i32),
         large_text,
         embedded_graphics::text::Baseline::Top,
+    )
+    .draw(display)
+    .map_err(|e| WeatherPageError::Display(e))?;
+
+    Text::with_baseline(
+        &high_low_temp,
+        Point::new(
+            0,
+            large_text.line_height() as i32 + small_text.line_height() as i32,
+        ),
+        small_text,
+        embedded_graphics::text::Baseline::Top,
+    )
+    .draw(display)
+    .map_err(|e| WeatherPageError::Display(e))?;
+
+    Text::with_text_style(
+        &weather.list[0].weather[0].main,
+        Point::new(width, 40),
+        small_text,
+        right_align,
     )
     .draw(display)
     .map_err(|e| WeatherPageError::Display(e))?;
