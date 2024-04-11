@@ -98,4 +98,6 @@ You'll also need the Python PIP and Python VENV modules. On Debian systems, you 
 
 ### Convert Icons
 
-`magick mogrify -size 40x40 -format bmp -monochrome -path ../../../bmp/40 *.svg`
+```sh 
+magick mogrify -size 40x40 -format bmp -monochrome -path ../../../bmp/40 *.svg
+```
