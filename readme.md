@@ -8,8 +8,6 @@ E-Paper display built using an ESP32S3 that can display various things such as t
 cargo build
 ```
 
-- Replace `<your-project-name>` with the name of the generated project
-
 ## Flash
 
 ```sh
