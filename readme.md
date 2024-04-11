@@ -13,8 +13,6 @@ cargo build
 ```sh
 cargo run
 ```
-- You can include the `--monitor` argument to the `espflash` command to open a serial monitor after flashing the device.
-- For more details on [`espflash` usage see the README](https://github.com/esp-rs/espflash/tree/main/espflash#usage)
 
 ## Monitor
 ```sh
