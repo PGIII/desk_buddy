@@ -1,6 +1,6 @@
-use crate::{ConfigWeather, Icons40};
+use crate::{Icons40};
 use anyhow::anyhow;
-use chrono::{DateTime, Utc};
+
 use db_weather::Condition;
 use db_weather_openweather::OpenWeather;
 use embedded_graphics::{
