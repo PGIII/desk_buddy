@@ -1,4 +1,4 @@
-use chrono::{FixedOffset, Utc};
+use chrono::{FixedOffset};
 use core::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
