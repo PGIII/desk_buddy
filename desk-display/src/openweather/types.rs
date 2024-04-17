@@ -16,7 +16,7 @@ pub struct List {
     pub weather: Vec<Weather>,
     pub clouds: Clouds,
     pub wind: Wind,
-    pub visibility: i64,
+    pub visibility: Option<i64>,
     pub pop: f64,
     pub rain: Option<Rain>,
     pub sys: Sys,

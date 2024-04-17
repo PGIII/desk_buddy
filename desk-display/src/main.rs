@@ -1,6 +1,6 @@
-pub mod openweather;
 pub mod pages;
 
+use db_weather_openweather::OpenWeather;
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::modem::WifiModemPeripheral;
@@ -16,8 +16,8 @@ use std::thread::sleep;
 use std::time::Duration;
 
 #[derive(RustEmbed)]
-#[folder = "images/bmp/ow/40/"]
-struct IconsOW40;
+#[folder = "images/bmp/40/"]
+struct Icons40;
 
 #[derive(RustEmbed)]
 #[folder = "images/bmp/20/"]
@@ -49,9 +49,14 @@ pub fn main() -> anyhow::Result<()> {
     EspLogger::initialize_default();
 
     //Load Config
+    info!("loading config");
     let config_str = include_str!("../config.toml");
     let config: Config = toml::from_str(config_str)?;
-
+    let weather_api = OpenWeather::new(
+        &config.weather.api_key,
+        config.weather.zip_code,
+        &config.weather.country_code,
+    );
     let peripherals = Peripherals::take()?;
     let _wifi = wifi_create(peripherals.modem, &config.wifi)?;
 
@@ -83,7 +88,7 @@ pub fn main() -> anyhow::Result<()> {
     display_bw.set_rotation(DisplayRotation::Rotate90);
 
     loop {
-        pages::weather::draw(&mut display_bw, &config.weather)?;
+        pages::weather::draw(&mut display_bw, &weather_api)?;
         ssd1680.update_bw_frame(display_bw.buffer()).unwrap();
         ssd1680.display_frame(&mut FreeRtos).unwrap();
         sleep(Duration::from_secs(60 * 10)); //10min
