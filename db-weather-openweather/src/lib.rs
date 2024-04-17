@@ -2,12 +2,12 @@ mod api;
 mod types;
 
 use anyhow::anyhow;
-use chrono::{DateTime, FixedOffset};
-use db_weather::Condition;
+
+
 use memchr::memmem;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
+
 use types::{Forecast, GeoLocationZip};
 use url::{Position, Url};
 

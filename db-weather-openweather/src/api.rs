@@ -1,13 +1,13 @@
-use anyhow::anyhow;
+
 use chrono::{DateTime, FixedOffset};
 use db_weather::Condition;
-use memchr::memmem;
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::time::Duration;
-use url::{Position, Url};
 
-use super::types::{self, Forecast, GeoLocationZip};
+
+
+use std::time::Duration;
+
+
+use super::types::{self, Forecast};
 
 impl From<Forecast> for db_weather::Forecast {
     fn from(value: Forecast) -> Self {
