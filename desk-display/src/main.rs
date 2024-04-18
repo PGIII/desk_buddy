@@ -1,5 +1,3 @@
-pub mod pages;
-
 use db_weather_openweather::OpenWeather;
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
@@ -9,19 +7,10 @@ use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SpiDriverConfig};
 use esp_idf_svc::sys::EspError;
 use esp_idf_svc::{hal::delay::Ets, log::EspLogger};
 use log::info;
-use rust_embed::RustEmbed;
 use serde::Deserialize;
 use ssd1680::prelude::*;
 use std::thread::sleep;
 use std::time::Duration;
-
-#[derive(RustEmbed)]
-#[folder = "images/bmp/40/"]
-struct Icons40;
-
-#[derive(RustEmbed)]
-#[folder = "images/bmp/20/"]
-struct Icons20;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -86,9 +75,8 @@ pub fn main() -> anyhow::Result<()> {
     ssd1680.clear_bw_frame().unwrap();
     let mut display_bw = Display2in13::bw();
     display_bw.set_rotation(DisplayRotation::Rotate90);
-
     loop {
-        pages::weather::draw(&mut display_bw, &weather_api)?;
+        db_ui::pages::weather::draw(&mut display_bw, &weather_api)?;
         ssd1680.update_bw_frame(display_bw.buffer()).unwrap();
         ssd1680.display_frame(&mut FreeRtos).unwrap();
         sleep(Duration::from_secs(60 * 10)); //10min

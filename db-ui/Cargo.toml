@@ -1,0 +1,24 @@
+[package]
+name = "db-ui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#including this for now but should make this as generic trait
+db-weather-openweather = {path = "../db-weather-openweather/"}
+db-weather = {path = "../db-weather/"}
+log = { version = "0.4", default-features = false }
+anyhow = "1.0.81"
+url = "2.5.0"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
+memmem = "0.1.1"
+embedded-graphics = "0.8.1"
+thiserror = "1.0.58"
+tinybmp = "0.5.0"
+rust-embed = { version = "8.3.0", features = ["debug-embed"] }
+profont = "0.7.0"
+chrono = "0.4.38"
+display-interface = "0.5.0"
