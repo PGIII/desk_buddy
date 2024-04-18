@@ -1,6 +1,0 @@
-$ mkdir -p "/home/pg3/dev/source/desk-buddy/db-ui/target/debug/build/az-dca22ccf413d97c5/out/try_track_caller"
-$ cd "/home/pg3/dev/source/desk-buddy/db-ui/target/debug/build/az-dca22ccf413d97c5/out/try_track_caller"
-$ printf '%s' "// try_tra"... > "/home/pg3/dev/source/desk-buddy/db-ui/target/debug/build/az-dca22ccf413d97c5/out/try_track_caller/try_track_caller.rs"
-$ cd "/home/pg3/dev/source/desk-buddy/db-ui/target/debug/build/az-dca22ccf413d97c5/out/try_track_caller" && "rustc" "try_track_caller.rs" "--emit=dep-info,metadata" >& /dev/null
-cargo:rustc-cfg=track_caller
-$ rm -r "/home/pg3/dev/source/desk-buddy/db-ui/target/debug/build/az-dca22ccf413d97c5/out/try_track_caller"
