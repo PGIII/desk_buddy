@@ -70,8 +70,8 @@ pub fn main() -> anyhow::Result<()> {
     let cs = peripherals.pins.gpio11;
 
     let spi = SpiDeviceDriver::new(spi, Some(cs), &esp_idf_svc::hal::spi::config::Config::new())?;
-
-    let mut ssd1680 = Ssd1680::new(spi, busy, dc, rst, &mut delay).unwrap();
+    let di = display_interface_spi::SPIInterface::new(spi, dc);
+    let mut ssd1680 = Ssd1680::new(di, busy, rst, &mut delay).unwrap();
     ssd1680.clear_bw_frame().unwrap();
     let mut display_bw = Display2in13::bw();
     display_bw.set_rotation(DisplayRotation::Rotate90);

@@ -36,7 +36,7 @@ url = "2.5.0"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 memmem = "0.1.1"
-ssd1680 = {git = "https://github.com/PGIII/ssd1680", branch="embedded_hal_1_invert"}
+ssd1680 = {git = "https://github.com/PGIII/ssd1680", branch="display-interface"}
 embedded-graphics = "0.8.1"
 thiserror = "1.0.58"
 tinybmp = "0.5.0"
@@ -44,6 +44,7 @@ rust-embed = { version = "8.3.0", features = ["debug-embed"] }
 toml = "0.8.12"
 profont = "0.7.0"
 chrono = "0.4.38"
+display-interface-spi = "0.5.0"
 
 [build-dependencies]
 embuild = "0.31.3"

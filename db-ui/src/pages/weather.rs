@@ -26,6 +26,11 @@ pub enum WeatherPageError {
     Any(#[from] anyhow::Error),
 }
 
+impl From<DisplayError> for WeatherPageError {
+    fn from(value: DisplayError) -> Self {
+        WeatherPageError::Display(value)
+    }
+}
 impl From<Infallible> for WeatherPageError {
     fn from(_value: Infallible) -> Self {
         unreachable!()
