@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+
 use crate::Icons40;
 use anyhow::anyhow;
 use db_weather::Condition;
@@ -24,9 +26,16 @@ pub enum WeatherPageError {
     Any(#[from] anyhow::Error),
 }
 
-pub fn draw<D>(display: &mut D, weather_api: &OpenWeather) -> Result<(), WeatherPageError>
+impl From<Infallible> for WeatherPageError {
+    fn from(_value: Infallible) -> Self {
+        unreachable!()
+    }
+}
+
+pub fn draw<D, E>(display: &mut D, weather_api: &OpenWeather) -> Result<(), WeatherPageError>
 where
-    D: DrawTarget<Color = BinaryColor, Error = DisplayError>,
+    E: Into<WeatherPageError>,
+    D: DrawTarget<Color = BinaryColor, Error = E>,
 {
     let weather = weather_api.get_forecast()?;
     let Size { width, height: _ } = display.bounding_box().size;
@@ -54,7 +63,7 @@ where
     // background fill
     display
         .fill_solid(&display.bounding_box(), BinaryColor::On)
-        .map_err(|e| WeatherPageError::Display(e))?;
+        .map_err(|e| e.into())?;
 
     Text::with_baseline(
         &city_text,
@@ -63,7 +72,7 @@ where
         embedded_graphics::text::Baseline::Top,
     )
     .draw(display)
-    .map_err(|e| WeatherPageError::Display(e))?;
+    .map_err(|e| e.into())?;
 
     Text::with_baseline(
         &temp_str,
@@ -72,7 +81,7 @@ where
         embedded_graphics::text::Baseline::Top,
     )
     .draw(display)
-    .map_err(|e| WeatherPageError::Display(e))?;
+    .map_err(|e| e.into())?;
 
     Text::with_baseline(
         &high_low_temp,
@@ -84,7 +93,7 @@ where
         embedded_graphics::text::Baseline::Top,
     )
     .draw(display)
-    .map_err(|e| WeatherPageError::Display(e))?;
+    .map_err(|e| e.into())?;
 
     Text::with_text_style(
         (&weather.condition).into(),
@@ -93,10 +102,10 @@ where
         right_align,
     )
     .draw(display)
-    .map_err(|e| WeatherPageError::Display(e))?;
+    .map_err(|e| e.into())?;
     Image::new(&bmp, Point::new(width - 40, 0))
         .draw(display)
-        .map_err(|e| WeatherPageError::Display(e))?;
+        .map_err(|e| e.into())?;
     Ok(())
 }
 

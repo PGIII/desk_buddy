@@ -1,0 +1,14 @@
+[package]
+name = "db-ui-simulator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-graphics-simulator = "0.6.0"
+db-ui = {path = "../db-ui"}
+db-weather-openweather = {path = "../db-weather-openweather/"}
+embedded-graphics = "0.8.1"
+serde = "1.0.198"
+toml = "0.8.12"
