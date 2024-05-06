@@ -1,9 +1,11 @@
 use db_weather_openweather::OpenWeather;
+use embassy_time::Timer;
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::gpio::{AnyIOPin, PinDriver};
 use esp_idf_svc::hal::modem::WifiModemPeripheral;
 use esp_idf_svc::hal::peripherals::Peripherals;
 use esp_idf_svc::hal::spi::{SpiDeviceDriver, SpiDriver, SpiDriverConfig};
+use esp_idf_svc::hal::task::block_on;
 use esp_idf_svc::sys::EspError;
 use esp_idf_svc::{hal::delay::Ets, log::EspLogger};
 use log::info;
@@ -75,6 +77,9 @@ pub fn main() -> anyhow::Result<()> {
     ssd1680.clear_bw_frame().unwrap();
     let mut display_bw = Display2in13::bw();
     display_bw.set_rotation(DisplayRotation::Rotate90);
+
+    let _ = std::thread::spawn(usb_task);
+
     loop {
         db_ui::pages::weather::draw(&mut display_bw, &weather_api)?;
         ssd1680.update_bw_frame(display_bw.buffer()).unwrap();
@@ -83,6 +88,16 @@ pub fn main() -> anyhow::Result<()> {
     }
 }
 
+fn usb_task() {
+    block_on(async_usb())
+}
+
+async fn async_usb() {
+    loop {
+        log::info!("Hey from async");
+        Timer::after(embassy_time::Duration::from_secs(1)).await
+    }
+}
 fn wifi_create(
     modem: impl WifiModemPeripheral + 'static,
     config: &ConfigWifi,

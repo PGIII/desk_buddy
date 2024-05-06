@@ -1,0 +1,13 @@
+[package]
+name = "db-link"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+memchr = {version = "2.7.2", default-features = false}
+paste = "1.0.14"
+
+[features]
+alloc = ["memchr/alloc"]
