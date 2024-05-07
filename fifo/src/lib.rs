@@ -1,9 +1,9 @@
 #![no_std]
 
-pub struct Fifo<'a> {
+pub struct Fifo<'a, T> {
     head: usize,
     tail: usize,
-    buffer: &'a mut [u8],
+    buffer: &'a mut [T],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -11,11 +11,14 @@ pub enum Error {
     OutOfSpace,
 }
 
-impl<'a> Fifo<'a> {
+impl<'a, T> Fifo<'a, T>
+where
+    T: Copy,
+{
     /// Simple FIFO
-    /// Note: This can only write buffer_size - 1 ammount of bytes due to empty check being head ==
+    /// Note: This can only write buffer_size - 1 amount of bytes due to empty check being head ==
     /// tail, a more complex empty system could fix this but this should not need locks
-    pub fn new(buffer: &'a mut [u8]) -> Self {
+    pub fn new(buffer: &'a mut [T]) -> Self {
         Self {
             head: 0,
             tail: 0,
@@ -24,7 +27,7 @@ impl<'a> Fifo<'a> {
     }
 
     /// FIXME: do we want to return the slice of data left so we keep retrying ?
-    pub fn write(&mut self, write_buf: &[u8]) -> Result<(), Error> {
+    pub fn write(&mut self, write_buf: &[T]) -> Result<(), Error> {
         //make sure write wont hit head
         if self.head + write_buf.len() % self.buffer.len() != self.tail {
             //we have enough room, write each byte wrapping if needed
@@ -42,7 +45,8 @@ impl<'a> Fifo<'a> {
         }
     }
 
-    pub fn read(&mut self) -> Option<u8> {
+    /// Read next item from fifo and advance tail
+    pub fn read(&mut self) -> Option<T> {
         if self.head != self.tail {
             let item = self.buffer[self.tail];
             if self.tail + 1 == self.buffer.len() {
@@ -56,10 +60,19 @@ impl<'a> Fifo<'a> {
         }
     }
 
+    /// Read the next item but don't advance tail
+    pub fn peek(&self) -> Option<T> {
+        if self.head != self.tail {
+            Some(self.buffer[self.tail])
+        } else {
+            None
+        }
+    }
+
     /// Reads from fifo until buffer is full or fifo is empty
     /// returns how many items were read
     /// This could read nothing
-    pub fn read_to_buffer(&mut self, out_buffer: &mut [u8]) -> usize {
+    pub fn read_to_buffer(&mut self, out_buffer: &mut [T]) -> usize {
         for i in 0..out_buffer.len() {
             if let Some(item) = self.read() {
                 out_buffer[i] = item;
@@ -68,6 +81,29 @@ impl<'a> Fifo<'a> {
             }
         }
         return out_buffer.len();
+    }
+
+    /// returns how many items are currently in fifo
+    pub fn len(&self) -> usize {
+        if self.head == self.tail {
+            0
+        } else if self.head > self.tail {
+            self.head - self.tail
+        } else {
+            let to_end = self.buffer.len() - self.tail;
+            let to_head = self.head;
+            to_end + to_head
+        }
+    }
+
+    /// Returns max count of items fifo can hold
+    pub fn size(&self) -> usize {
+        self.buffer.len() - 1
+    }
+
+    /// Returns how many slots remain
+    pub fn remaining(&self) -> usize {
+        self.buffer.len() - self.len()
     }
 }
 
@@ -79,7 +115,9 @@ mod tests {
     fn test_simple_write() {
         let mut buffer = [0u8; 20];
         let mut fifo = Fifo::new(&mut buffer);
+        assert_eq!(fifo.len(), 0);
         fifo.write(&[0xF1]).unwrap();
+        assert_eq!(fifo.len(), 1);
         assert_eq!(1, fifo.head, "head not written correctly");
         assert_eq!(0, fifo.tail, "tail not written correctly");
         assert_eq!(0xF1, fifo.buffer[0], "Buffer not written correctly");
@@ -97,6 +135,7 @@ mod tests {
 
         let mut fifo = Fifo::new(&mut buffer);
         fifo.write(&write_buffer).unwrap();
+        assert_eq!(fifo.len(), 19);
         assert_eq!(fifo.read_to_buffer(&mut read_buffer), 19);
         assert_eq!(read_buffer, write_buffer);
     }
@@ -122,6 +161,7 @@ mod tests {
         assert_eq!(fifo.read(), None);
 
         fifo.write(&[2; 19]).unwrap();
+        assert_eq!(fifo.len(), 19);
         assert_eq!(fifo.read_to_buffer(&mut read_buffer), 19);
         assert_eq!(read_buffer, [2; 19]);
     }

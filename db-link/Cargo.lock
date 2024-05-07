@@ -6,9 +6,14 @@ version = 3
 name = "db-link"
 version = "0.1.0"
 dependencies = [
+ "fifo",
  "memchr",
  "paste",
 ]
+
+[[package]]
+name = "fifo"
+version = "0.1.0"
 
 [[package]]
 name = "memchr"

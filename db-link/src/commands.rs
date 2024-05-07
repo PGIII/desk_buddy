@@ -15,7 +15,8 @@ pub struct Header {
     pub sync: u8, //should be SYNC_BYTE
     pub version: u8,
     pub command: Command,
-    pub payload_length: u16,
+    pub payload_length: u8, // this gives us max payload of 255, which should be easy for
+                            // constrained devices to accommodate
 }
 
 #[derive(Debug, PartialEq)]

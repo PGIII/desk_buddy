@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 memchr = {version = "2.7.2", default-features = false}
 paste = "1.0.14"
+fifo = {path = "../fifo"}
 
 [features]
 alloc = ["memchr/alloc"]
