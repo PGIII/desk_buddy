@@ -156,6 +156,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "db-link"
+version = "0.1.0"
+dependencies = [
+ "fifo",
+ "heapless 0.8.0",
+ "memchr",
+ "paste",
+]
+
+[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -170,6 +180,7 @@ dependencies = [
 name = "desk-display-bare-metal"
 version = "0.1.0"
 dependencies = [
+ "db-link",
  "embassy-executor",
  "embassy-futures",
  "embassy-sync 0.5.0",
@@ -183,6 +194,7 @@ dependencies = [
  "esp-hal",
  "esp-println",
  "esp-wifi",
+ "fifo",
  "heapless 0.8.0",
  "log",
  "smoltcp",
@@ -627,6 +639,10 @@ dependencies = [
  "vcell",
  "xtensa-lx",
 ]
+
+[[package]]
+name = "fifo"
+version = "0.1.0"
 
 [[package]]
 name = "flate2"

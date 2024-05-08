@@ -9,6 +9,7 @@ edition = "2021"
 memchr = {version = "2.7.2", default-features = false}
 paste = "1.0.14"
 fifo = {path = "../fifo"}
+heapless = "0.8.0"
 
 [features]
 alloc = ["memchr/alloc"]

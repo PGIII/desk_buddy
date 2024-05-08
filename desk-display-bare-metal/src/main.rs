@@ -1,8 +1,11 @@
 #![no_std]
 #![no_main]
 
+use core::ptr::addr_of_mut;
+
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use embassy_time::Timer;
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
@@ -13,15 +16,14 @@ use esp_hal::{
     usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx},
     Async,
 };
+use fifo::Fifo;
+use heapless::spsc::{Consumer, Producer, Queue};
 use static_cell::StaticCell;
 
 const MAX_BUFFER_SIZE: usize = 512;
 
 #[embassy_executor::task]
-async fn writer(
-    mut tx: UsbSerialJtagTx<'static, Async>,
-    signal: &'static Signal<NoopRawMutex, heapless::String<MAX_BUFFER_SIZE>>,
-) {
+async fn writer(mut tx: UsbSerialJtagTx<'static, Async>, mut fifo: Consumer<'static, u8, 1024>) {
     use core::fmt::Write;
     embedded_io_async::Write::write_all(
         &mut tx,
@@ -30,27 +32,28 @@ async fn writer(
     .await
     .unwrap();
     loop {
-        let message = signal.wait().await;
-        signal.reset();
-
-        write!(&mut tx, "-- received '{}' --\r\n", message).unwrap();
-        embedded_io_async::Write::flush(&mut tx).await.unwrap();
+        match fifo.dequeue() {
+            Some(byte) => {
+                write!(&mut tx, "-- received '{}' --\r\n", byte).unwrap();
+                embedded_io_async::Write::flush(&mut tx).await.unwrap();
+            }
+            None => {
+                Timer::after_secs(1).await;
+            }
+        }
     }
 }
 
 #[embassy_executor::task]
-async fn reader(
-    mut rx: UsbSerialJtagRx<'static, Async>,
-    signal: &'static Signal<NoopRawMutex, heapless::String<MAX_BUFFER_SIZE>>,
-) {
+async fn reader(mut rx: UsbSerialJtagRx<'static, Async>, mut fifo: Producer<'static, u8, 1024>) {
     let mut rbuf = [0u8; MAX_BUFFER_SIZE];
     loop {
         let r = embedded_io_async::Read::read(&mut rx, &mut rbuf).await;
         match r {
             Ok(len) => {
-                let mut string_buffer: heapless::Vec<_, MAX_BUFFER_SIZE> = heapless::Vec::new();
-                string_buffer.extend_from_slice(&rbuf[..len]).unwrap();
-                signal.signal(heapless::String::from_utf8(string_buffer).unwrap());
+                for b in &rbuf[..len] {
+                    fifo.enqueue(*b).unwrap();
+                }
             }
             Err(e) => esp_println::println!("RX Error: {:?}", e),
         }
@@ -69,10 +72,14 @@ async fn main(spawner: Spawner) {
     let (tx, rx) = UsbSerialJtag::new_async(peripherals.USB_DEVICE).split();
     esp_println::logger::init_logger_from_env();
 
-    static SIGNAL: StaticCell<Signal<NoopRawMutex, heapless::String<MAX_BUFFER_SIZE>>> =
-        StaticCell::new();
-    let signal = &*SIGNAL.init(Signal::new());
+    //can static cell fix this ?
+    let fifo: &'static mut Queue<u8, 1024> = {
+        static mut Q: Queue<u8, 1024> = Queue::new();
+        unsafe { &mut Q }
+    };
 
-    spawner.spawn(reader(rx, &signal)).unwrap();
-    spawner.spawn(writer(tx, &signal)).unwrap();
+    let (producer, consumer) = fifo.split();
+
+    spawner.spawn(reader(rx, producer)).unwrap();
+    spawner.spawn(writer(tx, consumer)).unwrap()
 }

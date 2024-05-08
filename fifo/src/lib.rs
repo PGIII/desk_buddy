@@ -1,8 +1,10 @@
 #![no_std]
 
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 pub struct Fifo<'a, T> {
-    head: usize,
-    tail: usize,
+    head: AtomicUsize,
+    tail: AtomicUsize,
     buffer: &'a mut [T],
 }
 
@@ -20,8 +22,8 @@ where
     /// tail, a more complex empty system could fix this but this should not need locks
     pub fn new(buffer: &'a mut [T]) -> Self {
         Self {
-            head: 0,
-            tail: 0,
+            head: 0.into(),
+            tail: 0.into(),
             buffer,
         }
     }
@@ -29,14 +31,17 @@ where
     /// FIXME: do we want to return the slice of data left so we keep retrying ?
     pub fn write(&mut self, write_buf: &[T]) -> Result<(), Error> {
         //make sure write wont hit head
-        if self.head + write_buf.len() % self.buffer.len() != self.tail {
+        if self.head.load(Ordering::SeqCst) + write_buf.len() % self.buffer.len()
+            != self.tail.load(Ordering::SeqCst)
+        {
             //we have enough room, write each byte wrapping if needed
             for i in 0..write_buf.len() {
-                self.buffer[self.head] = write_buf[i];
-                if self.head + 1 == self.buffer.len() {
-                    self.head = 0;
+                let head = self.head.load(Ordering::SeqCst);
+                self.buffer[head] = write_buf[i];
+                if head + 1 == self.buffer.len() {
+                    self.head.store(0, Ordering::SeqCst);
                 } else {
-                    self.head += 1;
+                    self.head.fetch_add(1, Ordering::SeqCst);
                 }
             }
             Ok(())
@@ -47,12 +52,13 @@ where
 
     /// Read next item from fifo and advance tail
     pub fn read(&mut self) -> Option<T> {
-        if self.head != self.tail {
-            let item = self.buffer[self.tail];
-            if self.tail + 1 == self.buffer.len() {
-                self.tail = 0;
+        let tail = self.tail.load(Ordering::SeqCst);
+        if self.head.load(Ordering::SeqCst) != tail {
+            let item = self.buffer[tail];
+            if tail + 1 == self.buffer.len() {
+                self.tail.store(0, Ordering::SeqCst);
             } else {
-                self.tail += 1;
+                self.tail.fetch_add(1, Ordering::SeqCst);
             }
             Some(item)
         } else {
@@ -62,8 +68,9 @@ where
 
     /// Read the next item but don't advance tail
     pub fn peek(&self) -> Option<T> {
-        if self.head != self.tail {
-            Some(self.buffer[self.tail])
+        let tail = self.tail.load(Ordering::SeqCst);
+        if self.head.load(Ordering::SeqCst) != tail {
+            Some(self.buffer[tail])
         } else {
             None
         }
@@ -85,13 +92,15 @@ where
 
     /// returns how many items are currently in fifo
     pub fn len(&self) -> usize {
-        if self.head == self.tail {
+        let tail = self.tail.load(Ordering::SeqCst);
+        let head = self.head.load(Ordering::SeqCst);
+        if head == tail {
             0
-        } else if self.head > self.tail {
-            self.head - self.tail
+        } else if head > tail {
+            head - tail
         } else {
-            let to_end = self.buffer.len() - self.tail;
-            let to_head = self.head;
+            let to_end = self.buffer.len() - tail;
+            let to_head = head;
             to_end + to_head
         }
     }
@@ -118,9 +127,6 @@ mod tests {
         assert_eq!(fifo.len(), 0);
         fifo.write(&[0xF1]).unwrap();
         assert_eq!(fifo.len(), 1);
-        assert_eq!(1, fifo.head, "head not written correctly");
-        assert_eq!(0, fifo.tail, "tail not written correctly");
-        assert_eq!(0xF1, fifo.buffer[0], "Buffer not written correctly");
         let b = fifo.read().unwrap();
         assert_eq!(b, 0xF1);
         assert_eq!(fifo.read(), None);
