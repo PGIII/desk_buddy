@@ -3,9 +3,11 @@
 
 use core::ptr::addr_of_mut;
 
+use db_link::{commands::Packet, parser::Parser};
 use embassy_executor::Spawner;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::Timer;
+use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::{
     clock::ClockControl,
@@ -31,11 +33,28 @@ async fn writer(mut tx: UsbSerialJtagTx<'static, Async>, mut fifo: Consumer<'sta
     )
     .await
     .unwrap();
+    let mut parser = Parser::new();
+
     loop {
         match fifo.dequeue() {
             Some(byte) => {
-                write!(&mut tx, "-- received '{}' --\r\n", byte).unwrap();
-                embedded_io_async::Write::flush(&mut tx).await.unwrap();
+                //log::info!("Got {}", byte);
+                match parser.parse(&[byte]) {
+                    Ok(packet) => match packet {
+                        Packet::Echo(_) => {
+                            let mut buf = [0u8; MAX_BUFFER_SIZE];
+                            tx.write_all(packet.serialize(&mut buf)).unwrap();
+                            embedded_io_async::Write::flush(&mut tx).await.unwrap();
+                        }
+                        _ => todo!(),
+                    },
+                    Err(db_link::parser::Error::InvalidVersion) => {
+                        log::error!("Received invalid version");
+                    }
+                    Err(_) => {}
+                }
+                // write!(&mut tx, "-- received '{}' --\r\n", byte).unwrap();
+                // embedded_io_async::Write::flush(&mut tx).await.unwrap();
             }
             None => {
                 Timer::after_secs(1).await;

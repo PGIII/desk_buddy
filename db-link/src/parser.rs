@@ -1,5 +1,3 @@
-use std::dbg;
-
 use crate::commands::{Command, Header, Packet, HEADER_SIZE, MAX_PACKET_SIZE, SYNC_BYTE, VERSION};
 
 #[cfg(feature = "std")]
