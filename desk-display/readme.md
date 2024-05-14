@@ -1,5 +1,7 @@
 # Desk Buddy
+
 [![Documentation](https://img.shields.io/badge/docs-esp--rs-brightgreen)](https://esp-rs.github.io/esp-idf-svc/esp_idf_svc/index.html)
+![image of desk display showing the wweather](DeskDisplayWeather.jpeg)
 
 E-Paper display built using an ESP32S3 that can display various things such as the Weather.
 ## Build
