@@ -60,7 +60,7 @@ impl Parser {
                 }
                 Status::WaitingForHeader => {
                     if self.buffer_pos == HEADER_SIZE {
-                        let header = buffer_to_header(&self.buffer[..HEADER_SIZE]);
+                        let header: &Header = buffer_to_struct(&self.buffer[..HEADER_SIZE]);
                         if header.version == VERSION {
                             self.status = Status::WaitingForPayload(
                                 header.command,
@@ -95,14 +95,17 @@ impl Parser {
 fn parse_command<'a>(command: Command, payload: &'a [u8]) -> Packet<'a> {
     match command {
         Command::Echo => Packet::Echo(payload),
-        Command::Version => Packet::Version,
-        Command::Ping => Packet::Ping,
+        Command::GetParamList => Packet::GetParamList,
+        Command::SetParam => Packet::SetParam(payload),
+        Command::GetParam => Packet::GetParam(payload),
+        Command::Response => Packet::Response(buffer_to_struct(payload)),
+        Command::Error => Packet::Error(buffer_to_struct(payload)),
     }
 }
 
-fn buffer_to_header<'a>(buffer: &'a [u8]) -> &'a Header {
-    let (head, body, _tail) = unsafe { buffer.align_to::<Header>() };
-    assert!(head.is_empty(), "Error Casting buf to header");
+fn buffer_to_struct<'a, S>(buffer: &'a [u8]) -> &'a S {
+    let (head, body, _tail) = unsafe { buffer.align_to::<S>() };
+    assert!(head.is_empty(), "Error Casting buf to struct");
     &body[0]
 }
 
@@ -176,7 +179,7 @@ mod tests {
 
     #[test]
     pub fn test_wrong_version() {
-        let buffer = [SYNC_BYTE, VERSION + 1, Command::Version as u8, 0];
+        let buffer = [SYNC_BYTE, VERSION + 1, Command::Echo as u8, 0];
         let mut parser = Parser::new();
         if let Err(output) = parser.parse(&buffer) {
             assert_eq!(output, Error::InvalidVersion);
@@ -187,7 +190,7 @@ mod tests {
 
     #[test]
     pub fn test_no_sync() {
-        let buffer = [VERSION + 1, Command::Version as u8, 0];
+        let buffer = [VERSION + 1, Command::Echo as u8, 0];
         let mut parser = Parser::new();
         if let Err(output) = parser.parse(&buffer) {
             assert_eq!(output, Error::NoSyncByte);

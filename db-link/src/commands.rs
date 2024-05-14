@@ -9,9 +9,12 @@ pub const MAX_PACKET_SIZE: usize = MAX_PAYLOAD_SIZE + HEADER_SIZE;
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(u8)]
 pub enum Command {
-    Ping,
     Echo,
-    Version,
+    GetParam,
+    SetParam,
+    GetParamList,
+    Response,
+    Error,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -24,11 +27,21 @@ pub struct Header {
                             // constrained devices to accommodate
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(C, packed)]
+pub struct ResponsePayload {
+    command: Command,
+    msg: [u8; MAX_PAYLOAD_SIZE - 1],
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Packet<'a> {
-    Ping,
-    Version,
     Echo(&'a [u8]), //whole payload is the message, dont need to do anything crazy here
+    GetParamList,
+    GetParam(&'a [u8]),
+    SetParam(&'a [u8]),
+    Response(&'a ResponsePayload),
+    Error(&'a ResponsePayload),
 }
 
 impl Header {
@@ -43,9 +56,18 @@ impl Header {
 
     pub fn from_packet<'a>(packet: &'a Packet) -> (Header, Option<&'a [u8]>) {
         match packet {
-            Packet::Ping => (Header::new(Command::Ping, 0), None),
-            Packet::Version => (Header::new(Command::Version, 0), None),
             Packet::Echo(buf) => (Header::new(Command::Echo, buf.len() as u8), Some(buf)),
+            Packet::GetParam(buf) => (Header::new(Command::GetParam, buf.len() as u8), Some(buf)),
+            Packet::SetParam(buf) => (Header::new(Command::SetParam, buf.len() as u8), Some(buf)),
+            Packet::GetParamList => (Header::new(Command::GetParamList, 0), None),
+            Packet::Response(response) => (
+                Header::new(Command::Response, (response.msg.len() + 1) as u8),
+                Some(unsafe { as_u8_slice(response) }),
+            ),
+            Packet::Error(response) => (
+                Header::new(Command::Error, (response.msg.len() + 1) as u8),
+                Some(unsafe { as_u8_slice(response) }),
+            ),
         }
     }
 
@@ -74,6 +96,37 @@ impl Packet<'_> {
             }
         }
         &buffer[..write_pos]
+    }
+
+    pub fn serialize_heapless_vec(&self) -> heapless::Vec<u8, MAX_PACKET_SIZE> {
+        let mut vec = heapless::Vec::<u8, MAX_PACKET_SIZE>::new();
+        let (header, payload) = Header::from_packet(self);
+        let header_buf = unsafe { as_u8_slice(&header) };
+        for b in header_buf {
+            //unwrap should be fine here since we're controlling all the sizes
+            //if we run out of space that's a big error
+            vec.push(*b).unwrap();
+        }
+        if let Some(payload) = payload {
+            // push buffer, memcpy ????
+            for b in payload {
+                vec.push(*b).unwrap();
+            }
+        }
+        vec
+    }
+
+    #[cfg(feature = "std")]
+    pub fn serialize_vec(&self) -> std::vec::Vec<u8> {
+        use std::vec;
+        let mut vec = vec![];
+        let (header, payload) = Header::from_packet(self);
+        let header_buf = unsafe { as_u8_slice(&header) };
+        vec.extend_from_slice(header_buf);
+        if let Some(payload) = payload {
+            vec.extend_from_slice(payload);
+        }
+        vec
     }
 }
 

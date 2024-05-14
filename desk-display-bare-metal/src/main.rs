@@ -3,7 +3,7 @@
 
 use core::ptr::addr_of_mut;
 
-use db_link::commands::MAX_PAYLOAD_SIZE;
+use db_link::commands::MAX_PACKET_SIZE;
 use db_link::{commands::Packet, parser::Parser};
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
@@ -23,25 +23,11 @@ use heapless::spsc::{Consumer, Producer, Queue};
 const MAX_BUFFER_SIZE: usize = 512;
 
 /// Handle packets, return vector should be sent back
-fn handle_packet(packet: Packet) -> heapless::Vec<u8, MAX_PAYLOAD_SIZE> {
-    let mut vec = heapless::Vec::<u8, MAX_PAYLOAD_SIZE>::new();
+fn handle_packet(packet: Packet) -> heapless::Vec<u8, MAX_PACKET_SIZE> {
     match packet {
-        Packet::Echo(_) => {
-            //FIXME: holy allocations batman
-            let mut buf = [0u8; MAX_BUFFER_SIZE];
-            let response = packet.serialize(&mut buf);
-            for b in response {
-                if vec.push(*b).is_err() {
-                    //This should't be able to happen, if it does probably and error in the
-                    //protocol
-                    //or *gasp* a memory error
-                    panic!("Ran out of space writing packet to vec")
-                }
-            }
-        }
+        Packet::Echo(_) => packet.serialize_heapless_vec(),
         _ => todo!(),
     }
-    vec
 }
 
 #[embassy_executor::task]
