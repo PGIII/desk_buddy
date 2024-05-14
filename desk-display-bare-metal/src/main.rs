@@ -3,10 +3,10 @@
 
 use core::ptr::addr_of_mut;
 
+use db_link::commands::MAX_PAYLOAD_SIZE;
 use db_link::{commands::Packet, parser::Parser};
 use embassy_executor::Spawner;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embassy_time::Timer;
+use embassy_sync::signal::Signal;
 use embedded_io::Write;
 use esp_backtrace as _;
 use esp_hal::{
@@ -18,53 +18,67 @@ use esp_hal::{
     usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx},
     Async,
 };
-use fifo::Fifo;
 use heapless::spsc::{Consumer, Producer, Queue};
-use static_cell::StaticCell;
 
 const MAX_BUFFER_SIZE: usize = 512;
 
-#[embassy_executor::task]
-async fn writer(mut tx: UsbSerialJtagTx<'static, Async>, mut fifo: Consumer<'static, u8, 1024>) {
-    use core::fmt::Write;
-    embedded_io_async::Write::write_all(
-        &mut tx,
-        b"Hello async USB Serial JTAG. Type something.\r\n",
-    )
-    .await
-    .unwrap();
-    let mut parser = Parser::new();
+/// Handle packets, return vector should be sent back
+fn handle_packet(packet: Packet) -> heapless::Vec<u8, MAX_PAYLOAD_SIZE> {
+    let mut vec = heapless::Vec::<u8, MAX_PAYLOAD_SIZE>::new();
+    match packet {
+        Packet::Echo(_) => {
+            //FIXME: holy allocations batman
+            let mut buf = [0u8; MAX_BUFFER_SIZE];
+            let response = packet.serialize(&mut buf);
+            for b in response {
+                if vec.push(*b).is_err() {
+                    //This should't be able to happen, if it does probably and error in the
+                    //protocol
+                    //or *gasp* a memory error
+                    panic!("Ran out of space writing packet to vec")
+                }
+            }
+        }
+        _ => todo!(),
+    }
+    vec
+}
 
+#[embassy_executor::task]
+async fn writer(
+    mut tx: UsbSerialJtagTx<'static, Async>,
+    signal: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, usize>,
+    mut fifo: Consumer<'static, u8, 1024>,
+) {
+    let mut parser = Parser::new();
     loop {
         match fifo.dequeue() {
             Some(byte) => {
-                //log::info!("Got {}", byte);
                 match parser.parse(&[byte]) {
-                    Ok(packet) => match packet {
-                        Packet::Echo(_) => {
-                            let mut buf = [0u8; MAX_BUFFER_SIZE];
-                            tx.write_all(packet.serialize(&mut buf)).unwrap();
-                            embedded_io_async::Write::flush(&mut tx).await.unwrap();
-                        }
-                        _ => todo!(),
-                    },
+                    Ok(packet) => {
+                        //TODO: I asumme this should only write the len of the vec but should check
+                        //this
+                        let buf = handle_packet(packet);
+                        tx.write_all(&buf).unwrap();
+                        embedded_io_async::Write::flush(&mut tx).await.unwrap();
+                    }
                     Err(db_link::parser::Error::InvalidVersion) => {
                         log::error!("Received invalid version");
                     }
                     Err(_) => {}
                 }
-                // write!(&mut tx, "-- received '{}' --\r\n", byte).unwrap();
-                // embedded_io_async::Write::flush(&mut tx).await.unwrap();
             }
-            None => {
-                Timer::after_secs(1).await;
-            }
+            None => _ = signal.wait().await,
         }
     }
 }
 
 #[embassy_executor::task]
-async fn reader(mut rx: UsbSerialJtagRx<'static, Async>, mut fifo: Producer<'static, u8, 1024>) {
+async fn reader(
+    mut rx: UsbSerialJtagRx<'static, Async>,
+    signal: &'static Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, usize>,
+    mut fifo: Producer<'static, u8, 1024>,
+) {
     let mut rbuf = [0u8; MAX_BUFFER_SIZE];
     loop {
         let r = embedded_io_async::Read::read(&mut rx, &mut rbuf).await;
@@ -73,6 +87,7 @@ async fn reader(mut rx: UsbSerialJtagRx<'static, Async>, mut fifo: Producer<'sta
                 for b in &rbuf[..len] {
                     fifo.enqueue(*b).unwrap();
                 }
+                signal.signal(len);
             }
             Err(e) => esp_println::println!("RX Error: {:?}", e),
         }
@@ -91,14 +106,15 @@ async fn main(spawner: Spawner) {
     let (tx, rx) = UsbSerialJtag::new_async(peripherals.USB_DEVICE).split();
     esp_println::logger::init_logger_from_env();
 
-    //can static cell fix this ?
     let fifo: &'static mut Queue<u8, 1024> = {
         static mut Q: Queue<u8, 1024> = Queue::new();
-        unsafe { &mut Q }
+        unsafe { &mut *addr_of_mut!(Q) }
     };
+    static DATA_SIGNAL: Signal<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, usize> =
+        Signal::new();
 
     let (producer, consumer) = fifo.split();
 
-    spawner.spawn(reader(rx, producer)).unwrap();
-    spawner.spawn(writer(tx, consumer)).unwrap()
+    spawner.spawn(reader(rx, &DATA_SIGNAL, producer)).unwrap();
+    spawner.spawn(writer(tx, &DATA_SIGNAL, consumer)).unwrap()
 }
