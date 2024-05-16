@@ -1,4 +1,6 @@
-use crate::commands::{Command, Header, Packet, HEADER_SIZE, MAX_PACKET_SIZE, SYNC_BYTE, VERSION};
+use crate::commands::{
+    Command, Header, Packet, PayloadBuf, HEADER_SIZE, MAX_PACKET_SIZE, SYNC_BYTE, VERSION,
+};
 
 #[cfg(feature = "std")]
 use thiserror::Error;
@@ -14,6 +16,8 @@ pub enum Error {
     InCompletePayload,
     #[cfg_attr(feature = "std", error("incomplete header"))]
     InCompleteHeader,
+    #[cfg_attr(feature = "std", error("payload too large"))]
+    PayloadTooBig,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +43,11 @@ impl Parser {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.buffer_pos = 0;
+        self.status = Status::WaitingForSync;
+    }
+
     /// Stores buffer in internal buffer, returning a packet if found
     /// Note: Some potential Foot guns.
     ///     Due do this being optimized for embedded enviorments without an allocator (heap) the
@@ -47,6 +56,12 @@ impl Parser {
     ///     bytes to the parser
     pub fn parse(&mut self, buffer: &[u8]) -> Result<Packet, Error> {
         for b in buffer {
+            //out of space
+            if self.buffer_pos >= self.buffer.len() {
+                self.reset();
+                return Err(Error::PayloadTooBig);
+            }
+
             //read a byte and see if we need to advance the state machine
             self.buffer[self.buffer_pos] = *b;
             self.buffer_pos += 1;
@@ -73,8 +88,7 @@ impl Parser {
                 }
                 Status::WaitingForPayload(command, payload_len) => {
                     if self.buffer_pos == HEADER_SIZE + payload_len {
-                        self.buffer_pos = 0;
-                        self.status = Status::WaitingForSync;
+                        self.reset();
                         return Ok(parse_command(
                             command,
                             &self.buffer[HEADER_SIZE..HEADER_SIZE + payload_len],
@@ -92,14 +106,16 @@ impl Parser {
     }
 }
 
-fn parse_command<'a>(command: Command, payload: &'a [u8]) -> Packet<'a> {
+fn parse_command<'a>(command: Command, payload: &'a [u8]) -> Packet {
+    //FIXME: Is panic the best move here ?
+    let vec = PayloadBuf::from_slice(payload).unwrap();
     match command {
-        Command::Echo => Packet::Echo(payload),
+        Command::Echo => Packet::Echo(vec),
         Command::GetParamList => Packet::GetParamList,
-        Command::SetParam => Packet::SetParam(payload),
-        Command::GetParam => Packet::GetParam(payload),
-        Command::Response => Packet::Response(buffer_to_struct(payload)),
-        Command::Error => Packet::Error(buffer_to_struct(payload)),
+        Command::SetParam => Packet::SetParam(vec),
+        Command::GetParam => Packet::GetParam(vec),
+        Command::Response => Packet::Response(vec),
+        Command::Error => Packet::Error(vec),
     }
 }
 
@@ -132,7 +148,8 @@ mod tests {
         ];
         let mut parser = Parser::new();
         let output = parser.parse(&buffer).unwrap();
-        assert_eq!(output, Packet::Echo(b"hello"));
+        let want = Packet::Echo(PayloadBuf::from_slice(b"hello").unwrap());
+        assert_eq!(output, want);
     }
 
     #[test]
@@ -140,10 +157,12 @@ mod tests {
         let buffer = [SYNC_BYTE, VERSION, Command::Echo as u8, 2, b'h', b'i'];
         let mut parser = Parser::new();
         let output = parser.parse(&buffer).unwrap();
-        assert_eq!(output, Packet::Echo(b"hi"));
+        let want = Packet::Echo(PayloadBuf::from_slice(b"hi").unwrap());
+        assert_eq!(output, want);
         let buffer2 = [SYNC_BYTE, VERSION, Command::Echo as u8, 3, b'b', b'y', b'e'];
         let output2 = parser.parse(&buffer2).unwrap();
-        assert_eq!(output2, Packet::Echo(b"bye"));
+        let want = Packet::Echo(PayloadBuf::from_slice(b"bye").unwrap());
+        assert_eq!(output2, want);
     }
 
     #[test]
@@ -163,7 +182,8 @@ mod tests {
         ];
         let mut parser = Parser::new();
         let output = parser.parse(&buffer).unwrap();
-        assert_eq!(output, Packet::Echo(b"hello"));
+        let want = Packet::Echo(PayloadBuf::from_slice(b"hello").unwrap());
+        assert_eq!(output, want);
     }
 
     #[test]

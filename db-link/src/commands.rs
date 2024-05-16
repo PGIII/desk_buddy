@@ -30,18 +30,19 @@ pub struct Header {
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[repr(C, packed)]
 pub struct ResponsePayload {
-    command: Command,
-    msg: [u8; MAX_PAYLOAD_SIZE - 1],
+    pub command: Command,
+    pub msg: [u8; MAX_PAYLOAD_SIZE - 1],
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Packet<'a> {
-    Echo(&'a [u8]), //whole payload is the message, dont need to do anything crazy here
+pub type PayloadBuf = heapless::Vec<u8, MAX_PAYLOAD_SIZE>;
+#[derive(Debug, PartialEq, Clone)]
+pub enum Packet {
+    Echo(PayloadBuf), //whole payload is the message, dont need to do anything crazy here
     GetParamList,
-    GetParam(&'a [u8]),
-    SetParam(&'a [u8]),
-    Response(&'a ResponsePayload),
-    Error(&'a ResponsePayload),
+    GetParam(PayloadBuf),
+    SetParam(PayloadBuf),
+    Response(PayloadBuf),
+    Error(PayloadBuf),
 }
 
 impl Header {
@@ -54,19 +55,19 @@ impl Header {
         }
     }
 
-    pub fn from_packet<'a>(packet: &'a Packet) -> (Header, Option<&'a [u8]>) {
+    pub fn from_packet(packet: Packet) -> (Header, Option<PayloadBuf>) {
         match packet {
             Packet::Echo(buf) => (Header::new(Command::Echo, buf.len() as u8), Some(buf)),
             Packet::GetParam(buf) => (Header::new(Command::GetParam, buf.len() as u8), Some(buf)),
             Packet::SetParam(buf) => (Header::new(Command::SetParam, buf.len() as u8), Some(buf)),
             Packet::GetParamList => (Header::new(Command::GetParamList, 0), None),
             Packet::Response(response) => (
-                Header::new(Command::Response, (response.msg.len() + 1) as u8),
-                Some(unsafe { as_u8_slice(response) }),
+                Header::new(Command::Response, response.len() as u8),
+                Some(response),
             ),
             Packet::Error(response) => (
-                Header::new(Command::Error, (response.msg.len() + 1) as u8),
-                Some(unsafe { as_u8_slice(response) }),
+                Header::new(Command::Error, response.len() as u8),
+                Some(response),
             ),
         }
     }
@@ -78,27 +79,8 @@ impl Header {
 }
 // 1 byte for BW , 250 x 250 pixels, 115200, 4 secs a frame, 15 fps
 // 1 bit for BW, 250 x 250 pixels, 115200, .5 sec a frame, 110 fps, 36 fps for 24bit color
-impl Packet<'_> {
-    pub fn serialize<'a>(&self, buffer: &'a mut [u8]) -> &'a [u8] {
-        let (header, payload) = Header::from_packet(self);
-        assert!(buffer.len() >= header.packet_size(), "buffer is too small");
-        let header_buf = unsafe { as_u8_slice(&header) };
-        let mut write_pos = 0;
-        for b in header_buf {
-            buffer[write_pos] = *b;
-            write_pos += 1;
-        }
-        if let Some(payload) = payload {
-            // push buffer, memcpy ????
-            for b in payload {
-                buffer[write_pos] = *b;
-                write_pos += 1;
-            }
-        }
-        &buffer[..write_pos]
-    }
-
-    pub fn serialize_heapless_vec(&self) -> heapless::Vec<u8, MAX_PACKET_SIZE> {
+impl Packet {
+    pub fn serialize(self) -> heapless::Vec<u8, MAX_PACKET_SIZE> {
         let mut vec = heapless::Vec::<u8, MAX_PACKET_SIZE>::new();
         let (header, payload) = Header::from_packet(self);
         let header_buf = unsafe { as_u8_slice(&header) };
@@ -109,22 +91,20 @@ impl Packet<'_> {
         }
         if let Some(payload) = payload {
             // push buffer, memcpy ????
-            for b in payload {
-                vec.push(*b).unwrap();
-            }
+            vec.extend(payload);
         }
         vec
     }
 
     #[cfg(feature = "std")]
-    pub fn serialize_vec(&self) -> std::vec::Vec<u8> {
+    pub fn serialize_vec(self) -> std::vec::Vec<u8> {
         use std::vec;
         let mut vec = vec![];
         let (header, payload) = Header::from_packet(self);
         let header_buf = unsafe { as_u8_slice(&header) };
         vec.extend_from_slice(header_buf);
         if let Some(payload) = payload {
-            vec.extend_from_slice(payload);
+            vec.extend(payload);
         }
         vec
     }
@@ -135,10 +115,10 @@ mod test {
     use super::*;
     #[test]
     pub fn test_serialize() {
-        let packet = Packet::Echo(b"Hi");
+        let packet = Packet::Echo(PayloadBuf::from_slice(b"Hi").unwrap());
         let expected = [SYNC_BYTE, VERSION, Command::Echo as u8, 2, b'H', b'i'];
         let mut buffer = [0u8; MAX_PACKET_SIZE];
 
-        assert_eq!(expected, packet.serialize(&mut buffer));
+        assert_eq!(expected, packet.serialize());
     }
 }
