@@ -14,20 +14,26 @@ use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embedded_io::Write as EIOWrite;
 use esp_backtrace as _;
-use esp_hal::rmt::Rmt;
+use esp_hal::gpio::NO_PIN;
 use esp_hal::{
     clock::ClockControl,
+    dma::*,
     embassy,
     gpio::IO,
     peripherals::Peripherals,
     prelude::*,
+    rmt::Rmt,
+    spi::{
+        master::{prelude::*, Spi},
+        SpiMode,
+    },
     timer::TimerGroup,
     usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx},
     Async,
 };
+use esp_hal::{dma_descriptors, spi};
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
 use heapless::spsc::{Consumer, Producer, Queue};
-use log::info;
 use smart_leds::hsv::Hsv;
 use smart_leds::{brightness, gamma, hsv::hsv2rgb, SmartLedsWrite};
 
@@ -124,6 +130,32 @@ async fn main(spawner: Spawner) {
     let clocks = ClockControl::max(system.clock_control).freeze();
     let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timg0);
+
+    let spi = peripherals.SPI2;
+    let rst = io.pins.gpio13;
+    let dc = io.pins.gpio12;
+    let busy = io.pins.gpio14;
+    let sclk = io.pins.gpio10;
+    let mosi = io.pins.gpio9;
+    let cs = io.pins.gpio11;
+    let dma = Dma::new(peripherals.DMA);
+
+    //TODO: why is dma this way?
+    #[cfg(any(feature = "esp32", feature = "esp32s2"))]
+    let dma_channel = dma.spi2channel;
+    #[cfg(not(any(feature = "esp32", feature = "esp32s2")))]
+    let dma_channel = dma.channel0;
+
+    //TODO: are these buffers?
+    let (mut descriptors, mut rx_descriptors) = dma_descriptors!(3200);
+    let mut spi = Spi::new(spi, 50_000.kHz(), SpiMode::Mode0, &clocks)
+        .with_pins(Some(sclk), Some(mosi), NO_PIN, Some(cs))
+        .with_dma(dma_channel.configure_for_async(
+            false,
+            &mut descriptors,
+            &mut rx_descriptors,
+            DmaPriority::Priority0,
+        ));
 
     let (tx, rx) = UsbSerialJtag::new_async(peripherals.USB_DEVICE).split();
     esp_println::logger::init_logger_from_env();
