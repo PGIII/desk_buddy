@@ -11,7 +11,14 @@ use db_link::{
 };
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Delay, Timer};
+use embedded_graphics::geometry::Point;
+use embedded_graphics::mono_font::iso_8859_5::FONT_6X9;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::*;
+use embedded_graphics::text::Text;
+use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_io::Write as EIOWrite;
 use esp_backtrace as _;
 use esp_hal::gpio::NO_PIN;
@@ -31,11 +38,16 @@ use esp_hal::{
     usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx},
     Async,
 };
-use esp_hal::{dma_descriptors, spi};
+use esp_hal::{dma_descriptors, spi, FlashSafeDma};
 use esp_hal_smartled::{smartLedBuffer, SmartLedsAdapter};
+use esp_println::println;
 use heapless::spsc::{Consumer, Producer, Queue};
+use log::info;
 use smart_leds::hsv::Hsv;
 use smart_leds::{brightness, gamma, hsv::hsv2rgb, SmartLedsWrite};
+use ssd1680::async_driver::Ssd1680Async;
+use ssd1680::driver::Ssd1680;
+use ssd1680::graphics::{Display, Display2in13, DisplayRotation};
 
 const QUEUE_SIZE: usize = 4096;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -131,13 +143,14 @@ async fn main(spawner: Spawner) {
     let timg0 = TimerGroup::new_async(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timg0);
 
+    println!("Building display");
     let spi = peripherals.SPI2;
-    let rst = io.pins.gpio13;
-    let dc = io.pins.gpio12;
-    let busy = io.pins.gpio14;
+    let rst = io.pins.gpio13.into_push_pull_output();
+    let dc = io.pins.gpio12.into_push_pull_output();
+    let busy = io.pins.gpio14.into_pull_up_input(); //FIXME: what should this be ?
     let sclk = io.pins.gpio10;
     let mosi = io.pins.gpio9;
-    let cs = io.pins.gpio11;
+    let cs = io.pins.gpio11.into_push_pull_output();
     let dma = Dma::new(peripherals.DMA);
 
     //TODO: why is dma this way?
@@ -148,14 +161,43 @@ async fn main(spawner: Spawner) {
 
     //TODO: are these buffers?
     let (mut descriptors, mut rx_descriptors) = dma_descriptors!(3200);
-    let mut spi = Spi::new(spi, 50_000.kHz(), SpiMode::Mode0, &clocks)
-        .with_pins(Some(sclk), Some(mosi), NO_PIN, Some(cs))
-        .with_dma(dma_channel.configure_for_async(
-            false,
-            &mut descriptors,
-            &mut rx_descriptors,
-            DmaPriority::Priority0,
-        ));
+    let spi = Spi::new(spi, 50_000.kHz(), SpiMode::Mode0, &clocks).with_pins(
+        Some(sclk),
+        Some(mosi),
+        NO_PIN,
+        NO_PIN,
+    );
+    // .with_dma(dma_channel.configure_for_async(
+    //     false,
+    //     &mut descriptors,
+    //     &mut rx_descriptors,
+    //     DmaPriority::Priority0,
+    // ));
+    //FIXME: investigate this if it's needed or not
+    //let spi = FlashSafeDma::<_, 6000>::new(spi);
+    let spi_device = ExclusiveDevice::new(spi, cs, Delay).unwrap();
+    let disp_interface = display_interface_spi::SPIInterface::new(spi_device, dc);
+    let mut delay = Delay;
+    let mut ssd1680 = Ssd1680::new(disp_interface, busy, rst, &mut delay).unwrap();
+    ssd1680.clear_bw_frame().unwrap();
+    let mut display_bw = Display2in13::bw();
+    display_bw.set_rotation(DisplayRotation::Rotate90);
+    println!("drawing display");
+    // background fill
+    display_bw
+        .fill_solid(&display_bw.bounding_box(), BinaryColor::On)
+        .unwrap();
+
+    Text::new(
+        "hello",
+        Point::new(10, 10),
+        MonoTextStyle::new(&FONT_6X9, BinaryColor::Off),
+    )
+    .draw(&mut display_bw)
+    .unwrap();
+    println!("updating display");
+    ssd1680.update_bw_frame(display_bw.buffer()).unwrap();
+    ssd1680.display_frame(&mut delay).unwrap();
 
     let (tx, rx) = UsbSerialJtag::new_async(peripherals.USB_DEVICE).split();
     esp_println::logger::init_logger_from_env();
